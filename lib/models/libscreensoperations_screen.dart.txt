@@ -1,0 +1,625 @@
+// lib/screens/operations_screen.dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import '../models/operation.dart';
+import '../services/operation_service.dart';
+
+class OperationsScreen extends StatefulWidget {
+  const OperationsScreen({super.key});
+
+  @override
+  State<OperationsScreen> createState() => _OperationsScreenState();
+}
+
+class _OperationsScreenState extends State<OperationsScreen> {
+  final OperationService _service = OperationService();
+  List<Operation> _operations = [];
+  bool _isLoading = true;
+  bool _isImporting = false;
+  DateTime? _dateDebut;
+  DateTime? _dateFin;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOperations();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOperations() async {
+    setState(() => _isLoading = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('operations')
+          .orderBy('dateOperation', descending: true)
+          .get();
+      
+      _operations = snapshot.docs.map((doc) {
+        return Operation.fromMap(doc.id, doc.data());
+      }).toList();
+      
+      setState(() => _isLoading = false);
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _importExcel() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xlsx', 'xls'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.first.path!);
+      final fileName = result.files.first.name;
+
+      setState(() => _isImporting = true);
+
+      final resultImport = await _service.importExcel(file, fileName);
+
+      setState(() => _isImporting = false);
+
+      if (resultImport['success']) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${resultImport['lignesImportees']} importées, ${resultImport['doublons']} doublons ignorés',
+            ),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadOperations();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erreur: ${resultImport['error']}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isImporting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _exportExcel() async {
+    try {
+      final filtered = _getFilteredOperations();
+      if (filtered.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Aucune opération à exporter'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final file = await _service.exportOperations(filtered);
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: '📊 Export des opérations (${filtered.length} lignes)',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
+  Future<void> _selectDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: _dateDebut != null && _dateFin != null
+          ? DateTimeRange(start: _dateDebut!, end: _dateFin!)
+          : null,
+    );
+    if (picked != null) {
+      setState(() {
+        _dateDebut = picked.start;
+        _dateFin = picked.end;
+      });
+    }
+  }
+
+  void _clearFilters() {
+    setState(() {
+      _dateDebut = null;
+      _dateFin = null;
+      _searchController.clear();
+      _searchQuery = '';
+    });
+  }
+
+  List<Operation> _getFilteredOperations() {
+    var filtered = List<Operation>.from(_operations);
+
+    // Filtre date
+    if (_dateDebut != null && _dateFin != null) {
+      filtered = filtered.where((op) =>
+          op.dateOperation.isAfter(_dateDebut!.subtract(const Duration(days: 1))) &&
+          op.dateOperation.isBefore(_dateFin!.add(const Duration(days: 1)))
+      ).toList();
+    }
+
+    // Filtre recherche
+    if (_searchQuery.isNotEmpty) {
+      final query = _searchQuery.toLowerCase();
+      filtered = filtered.where((op) =>
+          op.libelle.toLowerCase().contains(query) ||
+          op.numPiece.toLowerCase().contains(query)
+      ).toList();
+    }
+
+    return filtered;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _getFilteredOperations();
+    final totalDebit = filtered.fold(0.0, (sum, op) => sum + op.debit);
+    final totalCredit = filtered.fold(0.0, (sum, op) => sum + op.credit);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('🏦 Opérations Compte'),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+        centerTitle: true,
+        elevation: 4,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file),
+            onPressed: _isImporting ? null : _importExcel,
+            tooltip: 'Importer Excel',
+          ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            onPressed: _exportExcel,
+            tooltip: 'Exporter Excel',
+          ),
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: _selectDateRange,
+            tooltip: 'Filtrer par date',
+          ),
+          IconButton(
+            icon: const Icon(Icons.clear_all),
+            onPressed: _clearFilters,
+            tooltip: 'Effacer les filtres',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Barre de recherche et filtres
+          Container(
+            padding: const EdgeInsets.all(12),
+            color: Colors.grey.shade50,
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: '🔍 Rechercher par libellé ou numéro pièce...',
+                    prefixIcon: const Icon(Icons.search),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                        : null,
+                  ),
+                  onChanged: (value) {
+                    setState(() {
+                      _searchQuery = value;
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (_dateDebut != null && _dateFin != null) ...[
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today, size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '📅 ${DateFormat('dd/MM/yyyy').format(_dateDebut!)} → ${DateFormat('dd/MM/yyyy').format(_dateFin!)}',
+                                  style: TextStyle(
+                                    color: Colors.blue.shade700,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.close, size: 16),
+                                onPressed: () {
+                                  setState(() {
+                                    _dateDebut = null;
+                                    _dateFin = null;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Text(
+                        '${filtered.length} opérations',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                if (_isImporting) ...[
+                  const SizedBox(height: 8),
+                  const LinearProgressIndicator(),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Importation en cours...',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          // Totaux
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.blue.shade50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                Column(
+                  children: [
+                    const Text('💳 Débits', style: TextStyle(fontSize: 12)),
+                    Text(
+                      '${totalDebit.toStringAsFixed(2)} DH',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.red.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  children: [
+                    const Text('💰 Crédits', style: TextStyle(fontSize: 12)),
+                    Text(
+                      '${totalCredit.toStringAsFixed(2)} DH',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+                Column(
+                  children: [
+                    const Text('📊 Solde', style: TextStyle(fontSize: 12)),
+                    Text(
+                      '${(totalCredit - totalDebit).toStringAsFixed(2)} DH',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: totalCredit - totalDebit >= 0
+                            ? Colors.green.shade700
+                            : Colors.red.shade700,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          // Liste des opérations
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : filtered.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.account_balance,
+                              size: 80,
+                              color: Colors.grey.shade400,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _operations.isEmpty
+                                  ? 'Aucune opération'
+                                  : 'Aucune opération avec ces filtres',
+                              style: TextStyle(
+                                fontSize: 18,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _operations.isEmpty
+                                  ? 'Importez un fichier Excel'
+                                  : 'Modifiez vos filtres',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade500,
+                              ),
+                            ),
+                            if (_operations.isEmpty) ...[
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _importExcel,
+                                icon: const Icon(Icons.upload_file),
+                                label: const Text('Importer Excel'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue.shade700,
+                                  foregroundColor: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final op = filtered[index];
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 6),
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              leading: Container(
+                                width: 8,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: op.debit > 0
+                                      ? Colors.red
+                                      : Colors.green,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                              ),
+                              title: Text(
+                                op.libelle,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '📅 ${DateFormat('dd/MM/yyyy').format(op.dateOperation)}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  Text(
+                                    '📎 Pièce: ${op.numPiece}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey.shade500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              trailing: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  if (op.debit > 0)
+                                    Text(
+                                      '- ${op.debit.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.red.shade700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  if (op.credit > 0)
+                                    Text(
+                                      '+ ${op.credit.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade700,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 16,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () {
+                                      _confirmDelete(op.id);
+                                    },
+                                  ),
+                                ],
+                              ),
+                              onTap: () {
+                                _showOperationDetails(op);
+                              },
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _importExcel,
+        backgroundColor: Colors.blue.shade700,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.upload_file),
+        tooltip: 'Importer Excel',
+      ),
+    );
+  }
+
+  void _showOperationDetails(Operation op) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('📄 Détails'),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildDetailRow('Libellé', op.libelle),
+            _buildDetailRow('Date opération', DateFormat('dd/MM/yyyy').format(op.dateOperation)),
+            _buildDetailRow('Date valeur', DateFormat('dd/MM/yyyy').format(op.dateValeur)),
+            _buildDetailRow('Débit', op.debit > 0 ? '${op.debit.toStringAsFixed(2)} DH' : '-'),
+            _buildDetailRow('Crédit', op.credit > 0 ? '${op.credit.toStringAsFixed(2)} DH' : '-'),
+            _buildDetailRow('Numéro pièce', op.numPiece),
+            _buildDetailRow('Fichier source', op.fichierSource),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          Expanded(
+            child: Text(value),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(String id) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('🗑️ Supprimer'),
+        content: const Text('Voulez-vous supprimer cette opération ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              try {
+                await _service.deleteOperation(id);
+                _loadOperations();
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('✅ Opération supprimée'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('❌ Erreur: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+}

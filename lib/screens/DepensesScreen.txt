@@ -1,0 +1,221 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+class DepensesScreen extends StatefulWidget {
+  const DepensesScreen({super.key});
+
+  @override
+  State<DepensesScreen> createState() => _DepensesScreenState();
+}
+
+class _DepensesScreenState extends State<DepensesScreen> {
+  List<DocumentSnapshot> _depenses = [];
+  bool _isLoading = true;
+  String _debugInfo = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _chargerDepenses();
+  }
+
+  Future<void> _chargerDepenses() async {
+    setState(() {
+      _isLoading = true;
+      _debugInfo = 'Chargement...';
+    });
+
+    try {
+      print('📊 === CHARGEMENT DES DÉPENSES ===');
+      print('📱 Plateforme: ${await _getPlatform()}');
+
+      // ✅ Forcer le rechargement depuis le serveur
+      final snapshot = await FirebaseFirestore.instance
+          .collection('depenses')
+          .orderBy('createdAt', descending: true)
+          .get(const GetOptions(source: Source.server));
+
+      print('📊 Nombre de dépenses trouvées: ${snapshot.docs.length}');
+
+      // Afficher les 5 premières
+      for (var i = 0; i < snapshot.docs.length && i < 5; i++) {
+        final doc = snapshot.docs[i];
+        print('📝 Dépense ${i+1}: ${doc.id} -> ${doc.data()}');
+      }
+
+      if (snapshot.docs.isEmpty) {
+        print('⚠️ Aucune dépense trouvée');
+        setState(() {
+          _debugInfo = 'Aucune dépense trouvée. Vérifiez que la collection "depenses" contient des documents.';
+        });
+      }
+
+      setState(() {
+        _depenses = snapshot.docs;
+        _isLoading = false;
+        _debugInfo = '${_depenses.length} dépenses chargées';
+      });
+
+    } catch (e) {
+      print('❌ Erreur: $e');
+      setState(() {
+        _isLoading = false;
+        _debugInfo = 'Erreur: $e';
+      });
+    }
+  }
+
+  Future<String> _getPlatform() async {
+    if (await Firebase.app().options.projectId == null) {
+      return 'Firebase non initialisé';
+    }
+    return '✅ Firebase OK';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Dépenses'),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+        actions: [
+          // ✅ Bouton pour forcer le rechargement
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _chargerDepenses,
+            tooltip: 'Recharger',
+          ),
+          // ✅ Bouton pour vider le cache
+          IconButton(
+            icon: const Icon(Icons.clear_cache),
+            onPressed: _viderCache,
+            tooltip: 'Vider le cache',
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // ✅ Info de debug
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.grey.shade200,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _debugInfo,
+                  style: const TextStyle(fontSize: 12),
+                ),
+                Text(
+                  Platform.isAndroid ? '📱 Android' : '💻 Desktop',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          // ✅ Liste des dépenses
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _depenses.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.attach_money,
+                              size: 80,
+                              color: Colors.grey,
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Aucune dépense',
+                              style: TextStyle(fontSize: 18),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Collection: depenses',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            ElevatedButton.icon(
+                              onPressed: _chargerDepenses,
+                              icon: const Icon(Icons.refresh),
+                              label: const Text('Recharger'),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(8),
+                        itemCount: _depenses.length,
+                        itemBuilder: (context, index) {
+                          final doc = _depenses[index];
+                          final data = doc.data() as Map<String, dynamic>;
+                          return Card(
+                            child: ListTile(
+                              title: Text(
+                                data['description'] ?? 'Sans description',
+                                style: const TextStyle(fontWeight: FontWeight.w500),
+                              ),
+                              subtitle: Text(
+                                'Montant: ${data['montant'] ?? 0} DH',
+                              ),
+                              trailing: Text(
+                                data['categorie'] ?? 'Non catégorisé',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _chargerDepenses,
+        child: const Icon(Icons.refresh),
+        tooltip: 'Recharger',
+      ),
+    );
+  }
+
+  Future<void> _viderCache() async {
+    try {
+      setState(() {
+        _debugInfo = 'Vidage du cache...';
+        _isLoading = true;
+      });
+
+      // ✅ Désactiver la persistance
+      await FirebaseFirestore.instance.disablePersistence();
+
+      // ✅ Attendre que le cache soit vidé
+      await Future.delayed(const Duration(seconds: 1));
+
+      // ✅ Réactiver la persistance
+      await FirebaseFirestore.instance.settings = const Settings(
+        persistenceEnabled: true,
+      );
+
+      // ✅ Recharger les données
+      await _chargerDepenses();
+
+      setState(() {
+        _debugInfo = '✅ Cache vidé, ${_depenses.length} dépenses chargées';
+      });
+
+      print('✅ Cache vidé avec succès');
+    } catch (e) {
+      print('❌ Erreur vidage cache: $e');
+      setState(() {
+        _debugInfo = 'Erreur vidage cache: $e';
+        _isLoading = false;
+      });
+    }
+  }
+}

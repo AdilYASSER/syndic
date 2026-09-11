@@ -1,0 +1,140 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    overflow: hidden;
+
+    background: #F0F6FF;
+    color: #0D1B2A;
+    font-family: Georgia, serif;
+}
+
+/* الخلفية */
+.background {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    z-index: -1;
+
+    background:
+        linear-gradient(135deg, #F0F6FF, #DCEBFF);
+}
+
+/* الدوائر */
+.circle {
+    position: absolute;
+    border: 2px solid rgba(37, 99, 235, 0.25);
+    border-radius: 50%;
+    animation: float 8s ease-in-out infinite alternate;
+}
+
+.circle1 {
+    width: 300px;
+    height: 300px;
+    top: -150px;
+    left: -100px;
+}
+
+.circle2 {
+    width: 350px;
+    height: 350px;
+    right: -150px;
+    bottom: -150px;
+    animation-delay: 2s;
+}
+
+.circle3 {
+    width: 180px;
+    height: 180px;
+    right: 10%;
+    top: 10%;
+    animation-delay: 4s;
+}
+
+/* الأشكال الزرقاء */
+.blob {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+
+    background: #8BB8FF;
+    opacity: 0.35;
+
+    border-radius: 50%;
+    filter: blur(2px);
+
+    animation: moveBlob 10s ease-in-out infinite alternate;
+}
+
+.blob1 {
+    left: -180px;
+    bottom: -180px;
+}
+
+.blob2 {
+    right: -180px;
+    top: -180px;
+    animation-delay: 3s;
+}
+
+/* حركة الدوائر */
+@keyframes float {
+    from {
+        transform: translate(0, 0) scale(1);
+    }
+
+    to {
+        transform: translate(40px, 30px) scale(1.1);
+    }
+}
+
+/* حركة الأشكال */
+@keyframes moveBlob {
+    from {
+        transform: translate(0, 0);
+    }
+
+    to {
+        transform: translate(80px, 50px);
+    }
+}
+
+/* المحتوى */
+.content {
+    padding: 40px;
+}
+
+h1 {
+    color:#006B6B ;
+    text-align: center;
+    font-size: 70px;
+
+    animation: titleEnter 2s ease-out forwards;
+}
+
+@keyframes titleEnter {
+    from {
+        transform: translateX(-500px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+h2{
+    color:#5A7D7D ;
+}
+p{
+color:#8B5CF6;
+font-size: 25px;
+}
+        
+        
+    
+    
+

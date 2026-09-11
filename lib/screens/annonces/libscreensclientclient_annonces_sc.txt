@@ -1,0 +1,320 @@
+// lib/screens/client/client_annonces_screen.dart
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import '../../models/annonce_model.dart';
+import '../../services/annonce_service.dart';
+import '../annonces/add_annonce_screen.dart';
+import '../annonces/annonce_detail_screen.dart';
+
+class ClientAnnoncesScreen extends StatefulWidget {
+  final String appartement;
+  final String nomPrenom;
+  final String telephone;
+
+  const ClientAnnoncesScreen({
+    super.key,
+    required this.appartement,
+    this.nomPrenom = '',
+    this.telephone = '',
+  });
+
+  @override
+  State<ClientAnnoncesScreen> createState() => _ClientAnnoncesScreenState();
+}
+
+class _ClientAnnoncesScreenState extends State<ClientAnnoncesScreen> {
+  final AnnonceService _service = AnnonceService();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('🛒 Petites Annonces'),
+        backgroundColor: Colors.teal.shade700,
+        foregroundColor: Colors.white,
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => setState(() {}),
+          ),
+        ],
+      ),
+      body: StreamBuilder<List<AnnonceModel>>(
+        stream: _service.getAnnonces(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(child: Text('Erreur: ${snapshot.error}'));
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final annonces = snapshot.data!;
+          if (annonces.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.storefront, size: 80, color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Aucune annonce',
+                    style: TextStyle(fontSize: 18, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Soyez le premier à publier une annonce !',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: annonces.length,
+            itemBuilder: (context, index) {
+              final annonce = annonces[index];
+              return _buildAnnonceCard(annonce);
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _ajouterAnnonce,
+        backgroundColor: Colors.teal.shade700,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.add),
+        label: const Text('Publier'),
+      ),
+    );
+  }
+
+  Widget _buildAnnonceCard(AnnonceModel annonce) {
+    final isOwner = annonce.appartement == widget.appartement;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AnnonceDetailScreen(
+                annonce: annonce,
+                currentUserAppartement: widget.appartement,
+                isAdmin: false,
+              ),
+            ),
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image
+            if (annonce.imageUrls.isNotEmpty)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: Image.network(
+                  annonce.imageUrls.first,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      height: 180,
+                      color: Colors.grey.shade200,
+                      child: const Icon(Icons.broken_image, size: 50, color: Colors.grey),
+                    );
+                  },
+                ),
+              )
+            else
+              Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade100,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                ),
+                child: const Center(
+                  child: Icon(Icons.image_not_supported, size: 50, color: Colors.grey),
+                ),
+              ),
+
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Type d'annonce
+                  Row(
+                    children: [
+                      if (annonce.isDon)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '🎁 Don',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.green.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      if (annonce.isVente) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '💰 Vente',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.blue.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (annonce.isLocation) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '🏠 Location',
+                            style: TextStyle(
+                              fontSize: 10,
+                              color: Colors.orange.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const Spacer(),
+                      if (isOwner)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.purple.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'Ma publication',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.purple.shade700,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Nom
+                  Text(
+                    annonce.nomArticle,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  
+                  // Qualité
+                  Text(
+                    annonce.qualiteTexte,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  
+                  // Prix
+                  if (annonce.prix != null && annonce.prix! > 0)
+                    Text(
+                      '${annonce.prix!.toStringAsFixed(0)} DH',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.teal.shade700,
+                      ),
+                    )
+                  else if (annonce.isDon)
+                    Text(
+                      'GRATUIT',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 8),
+                  
+                  // Infos vendeur
+                  Row(
+                    children: [
+                      Icon(Icons.person, size: 14, color: Colors.grey.shade500),
+                      const SizedBox(width: 4),
+                      Text(
+                        annonce.appartement,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(Icons.calendar_today, size: 12, color: Colors.grey.shade500),
+                      const SizedBox(width: 4),
+                      Text(
+                        DateFormat('dd/MM/yy').format(annonce.dateCreation),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _ajouterAnnonce() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddAnnonceScreen(
+          appartement: widget.appartement,
+          nomPrenom: widget.nomPrenom,
+          telephone: widget.telephone,
+          createdBy: 'client',
+        ),
+      ),
+    );
+  }
+}

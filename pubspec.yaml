@@ -1,0 +1,89 @@
+name: syndic
+description: Application de gestion des copropriétaires
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Base de données locale
+  sqflite: ^2.3.0
+  path: ^1.8.3
+
+  # Utilitaires
+  intl: ^0.20.2
+  url_launcher: ^6.2.1
+  http: ^1.2.1
+
+  # Firebase
+  firebase_core: ^3.15.1
+  firebase_auth: ^5.5.1
+  cloud_firestore: ^5.6.0
+  firebase_storage: ^12.4.0
+
+  # Localisation
+  flutter_localizations:
+    sdk: flutter
+
+  # Stockage
+  path_provider: ^2.1.1
+  shared_preferences: ^2.3.0
+
+  # Graphiques
+  fl_chart: ^0.68.0
+
+  # Images et fichiers
+  image_picker: ^1.1.1
+  share_plus: ^10.1.0
+  file_picker: ^8.0.0+1
+  excel: ^4.0.6
+
+  # CSV
+  csv: ^5.1.1
+
+  # Permissions
+  permission_handler: ^11.0.1
+
+  # PDF (pour les reçus)
+  pdf: ^3.10.4
+  printing: ^5.11.1
+
+  # Pour ouvrir les fichiers sur mobile
+  open_file: ^3.4.0
+
+  # Pour le Web (support HTML)
+  universal_html: ^2.2.4
+
+  # Pour exécuter Python
+  process_run: ^1.1.0
+
+  # ✅ NOUVEAU : Badge sur l'icône de l'app (Android/iOS)
+  app_badge_plus: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/pdfs/
+    - assets/images/app_icon.ico
+    - assets/images/signature.png
+    - assets/categories.json
+
+  # Optionnel : Ajouter les fonts pour supprimer les warnings
+  # fonts:
+  #   - family: MaterialIcons
+  #     fonts:
+  #       - asset: fonts/MaterialIcons-Regular.otf
+  #   - family: CupertinoIcons
+  #     fonts:
+  #       - asset: packages/cupertino_icons/CupertinoIcons.ttf
